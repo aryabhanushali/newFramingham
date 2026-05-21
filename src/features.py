@@ -1,55 +1,63 @@
 import pandas as pd
 import numpy as np
 
-def build_activity_features(paxday, paxhd):
-    """
-    Build per-participant wearable features from daily activity data.
-    These are the ONLY features your model will use — no blood labs.
-    """
+# PAXDAY column guide (NHANES 2011-2012):
+# PAXVMD   = valid wear minutes per day
+# PAXWWMD  = wake wear minutes
+# PAXSWMD  = sleep wear minutes
+# PAXNWMD  = non-wear minutes
+# PAXAISMD = total activity intensity sum (accelerometer counts)
+# PAXMTSD  = mean activity intensity
+# PAXLXSD  = ambient light sum (lux)
 
-    # Merge with header to get valid wear flags
+def build_activity_features(paxday, paxhd):
+
     df = paxday.merge(paxhd[['SEQN', 'PAXHAND']], on='SEQN', how='left')
 
-    # Filter to valid days only (PAXDAYWEAR >= 600 mins = 10 hours)
-    if 'PAXDAYWEAR' in df.columns:
-        df = df[df['PAXDAYWEAR'] >= 600]
+    # Filter to valid days only — at least 600 valid wear minutes
+    df = df[df['PAXVMD'] >= 600].copy()
 
     features = []
 
     for seqn, person in df.groupby('SEQN'):
         row = {'SEQN': seqn}
 
-        # --- Step count features ---
-        if 'PAXDAYSTEP' in person.columns:
-            steps = person['PAXDAYSTEP'].dropna()
-            row['mean_daily_steps']    = steps.mean()
-            row['std_daily_steps']     = steps.std()
-            row['min_daily_steps']     = steps.min()
-            row['max_daily_steps']     = steps.max()
-            row['days_under_5k_steps'] = (steps < 5000).sum()
-            row['days_over_10k_steps'] = (steps > 10000).sum()
+        # --- Activity intensity (main signal) ---
+        activity = person['PAXAISMD'].dropna()
+        row['mean_activity']       = activity.mean()
+        row['std_activity']        = activity.std()
+        row['min_activity']        = activity.min()
+        row['max_activity']        = activity.max()
+        row['activity_regularity'] = 1 / (activity.std() + 1)
 
-        # --- Wear time features ---
-        if 'PAXDAYWEAR' in person.columns:
-            wear = person['PAXDAYWEAR'].dropna()
-            row['mean_wear_minutes'] = wear.mean()
-            row['n_valid_days']      = len(wear)
+        # Low activity days (bottom quartile of this person's data)
+        threshold = activity.quantile(0.25)
+        row['low_activity_days']  = (activity < threshold).sum()
+        row['high_activity_days'] = (activity > activity.quantile(0.75)).sum()
 
-        # --- Sedentary time ---
-        if 'PAXDAYSED' in person.columns:
-            sed = person['PAXDAYSED'].dropna()
-            row['mean_sedentary_mins'] = sed.mean()
-            row['sedentary_ratio']     = (sed / person['PAXDAYWEAR']).mean()
+        # --- Mean activity intensity per minute (normalised) ---
+        mean_intensity = person['PAXMTSD'].dropna()
+        row['mean_intensity']     = mean_intensity.mean()
+        row['std_intensity']      = mean_intensity.std()
 
-        # --- Moderate-vigorous activity ---
-        if 'PAXDAYMVPA' in person.columns:
-            mvpa = person['PAXDAYMVPA'].dropna()
-            row['mean_mvpa_mins']       = mvpa.mean()
-            row['days_meet_guidelines'] = (mvpa >= 30).sum()
+        # --- Wake vs sleep time ---
+        wake  = person['PAXWWMD'].dropna()
+        sleep = person['PAXSWMD'].dropna()
+        row['mean_wake_mins']     = wake.mean()
+        row['mean_sleep_mins']    = sleep.mean()
+        row['sleep_ratio']        = (sleep / (wake + sleep + 1)).mean()
 
-        # --- Activity regularity (lower std = more regular) ---
-        if 'PAXDAYSTEP' in person.columns:
-            row['activity_regularity'] = 1 / (steps.std() + 1)
+        # --- Non-wear / sedentary proxy ---
+        nonwear = person['PAXNWMD'].dropna()
+        row['mean_nonwear_mins']  = nonwear.mean()
+
+        # --- Light exposure (circadian proxy) ---
+        lux = person['PAXLXSD'].dropna()
+        row['mean_lux']           = lux.mean()
+        row['std_lux']            = lux.std()
+
+        # --- Valid days count ---
+        row['n_valid_days']       = len(person)
 
         features.append(row)
 
@@ -57,36 +65,20 @@ def build_activity_features(paxday, paxhd):
 
 
 def build_model_dataset(clinical_scored, paxday, paxhd):
-    """
-    Merge Framingham labels with wearable-only features.
-    Drop all clinical lab values — model can only see wearable data.
-    """
-    # Build activity features
+
     act = build_activity_features(paxday, paxhd)
 
-    # Keep only wearable-safe columns from clinical
     wearable_safe = ['SEQN', 'RIDAGEYR', 'RIAGENDR',
                      'framingham_risk', 'high_risk']
     clinical_clean = clinical_scored[wearable_safe].dropna(subset=['framingham_risk'])
 
-    # Merge
     dataset = clinical_clean.merge(act, on='SEQN', how='inner')
 
-    print(f"Final dataset: {dataset.shape[0]} participants, {dataset.shape[1]} features")
+    feature_cols = [c for c in dataset.columns if c not in wearable_safe]
+
+    print(f"Final dataset: {dataset.shape[0]} participants, {len(feature_cols)} features")
     print(f"High risk: {dataset['high_risk'].sum()} ({dataset['high_risk'].mean()*100:.1f}%)")
     print(f"Low risk:  {(dataset['high_risk']==0).sum()}")
-    print(f"\nFeature columns:\n{[c for c in dataset.columns if c not in wearable_safe]}")
+    print(f"\nFeatures: {feature_cols}")
 
     return dataset
-
-
-if __name__ == '__main__':
-    import sys
-    sys.path.append('.')
-    from src.load_data import load_all
-    from src.framingham import compute_framingham
-
-    clinical, paxhd, paxday, paxhr = load_all()
-    clinical_scored = compute_framingham(clinical)
-    dataset = build_model_dataset(clinical_scored, paxday, paxhd)
-    print(dataset.head())
