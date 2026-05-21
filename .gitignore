@@ -1,0 +1,15 @@
+data/*.xpt
+data/*.csv
+__pycache__/
+.DS_Store
+.env
+*.pyc
+.ipynb_checkpoints/
+venv/
+.venv/
+
+# Xcode build artifacts (kept for the iOS scaffold)
+ios/build/
+ios/DerivedData/
+ios/*.xcuserdatad/
+ios/**/xcuserdata/
