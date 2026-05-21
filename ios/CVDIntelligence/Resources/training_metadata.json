@@ -1,0 +1,42 @@
+{
+  "model_name": "CVDRiskModel",
+  "model_version": "1.0.0",
+  "framework": "scikit-learn GradientBoostingClassifier",
+  "calibration": "isotonic, 5-fold",
+  "training_cohort": "NHANES 2011-2012, ages 30-74",
+  "training_n": 2967,
+  "high_risk_threshold": 0.1,
+  "metrics": {
+    "auc_cv5": 0.9191169425741682,
+    "brier_cv5": 0.11110756438146864,
+    "high_risk_prevalence": 0.4098415908324907
+  },
+  "feature_cols": [
+    "age",
+    "biological_sex",
+    "avg_daily_active_energy",
+    "avg_daily_step_count",
+    "avg_daily_exercise_min",
+    "activity_regularity",
+    "low_activity_day_ratio",
+    "peak_intensity",
+    "sedentary_minutes",
+    "avg_sleep_hours",
+    "sleep_regularity",
+    "circadian_light_exposure"
+  ],
+  "feature_medians": {
+    "age": 51.0,
+    "biological_sex": 0.0,
+    "avg_daily_active_energy": 357.591640625,
+    "avg_daily_step_count": 6652.867732558139,
+    "avg_daily_exercise_min": 36.51636875,
+    "activity_regularity": 0.7887627289781312,
+    "low_activity_day_ratio": 0.25,
+    "peak_intensity": 511.571625,
+    "sedentary_minutes": 752.0348544444445,
+    "avg_sleep_hours": 6.779166666666667,
+    "sleep_regularity": 0.3111355975478554,
+    "circadian_light_exposure": 118997.875
+  }
+}

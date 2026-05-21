@@ -1,8 +1,0 @@
-data/*.xpt
-data/*.csv
-__pycache__/
-.DS_Store
-.env
-*.pyc
-results/
-.ipynb_checkpoints/

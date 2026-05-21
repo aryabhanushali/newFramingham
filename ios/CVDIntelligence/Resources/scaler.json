@@ -1,0 +1,58 @@
+{
+  "feature_order": [
+    "age",
+    "biological_sex",
+    "avg_daily_active_energy",
+    "avg_daily_step_count",
+    "avg_daily_exercise_min",
+    "activity_regularity",
+    "low_activity_day_ratio",
+    "peak_intensity",
+    "sedentary_minutes",
+    "avg_sleep_hours",
+    "sleep_regularity",
+    "circadian_light_exposure"
+  ],
+  "mean": [
+    50.77182339063027,
+    0.49915739804516346,
+    369.78882357635376,
+    6879.792066536815,
+    32.6521173775793,
+    0.7909771715893372,
+    0.234739274880832,
+    532.8918691017864,
+    720.2249776251224,
+    6.6795647113843115,
+    0.3400756095319108,
+    149686.96302674658
+  ],
+  "scale": [
+    12.578952204751229,
+    0.49999929002144167,
+    87.296494347333,
+    1624.1208250666605,
+    16.037688908123304,
+    0.06533219132799006,
+    0.029916872891745872,
+    136.51864278483578,
+    152.2970486725671,
+    2.010189111315607,
+    0.12556720649910505,
+    122740.203804906
+  ],
+  "medians": {
+    "age": 51.0,
+    "biological_sex": 0.0,
+    "avg_daily_active_energy": 357.591640625,
+    "avg_daily_step_count": 6652.867732558139,
+    "avg_daily_exercise_min": 36.51636875,
+    "activity_regularity": 0.7887627289781312,
+    "low_activity_day_ratio": 0.25,
+    "peak_intensity": 511.571625,
+    "sedentary_minutes": 752.0348544444445,
+    "avg_sleep_hours": 6.779166666666667,
+    "sleep_regularity": 0.3111355975478554,
+    "circadian_light_exposure": 118997.875
+  }
+}
