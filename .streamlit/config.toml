@@ -1,0 +1,12 @@
+# Pin the app to a light editorial palette so visitors on dark-mode browsers
+# don't get white labels on a warm-paper background.
+[theme]
+base = "light"
+primaryColor = "#B3261E"           # editorial crimson — risk accent
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#FBF9F3"   # sidebar paper
+textColor = "#15161A"              # near-black ink for body / slider labels
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false

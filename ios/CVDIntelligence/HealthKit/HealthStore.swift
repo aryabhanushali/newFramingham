@@ -75,12 +75,17 @@ final class HealthStore: ObservableObject {
         async let rhr = avgDaily(.restingHeartRate, unit: .count().unitDivided(by: .minute()), days: 7)
         async let hrv = avgDaily(.heartRateVariabilitySDNN, unit: HKUnit.secondUnit(with: .milli), days: 7)
         async let vo2 = avgDaily(.vo2Max, unit: HKUnit(from: "ml/(kg*min)"), days: 30)
-        async let sleep = avgSleepHours(days: 7)
+        async let sleepStats = sleepStatistics(days: 7)
         async let activityStats = activityDaily(days: 14)
 
         // Resolve once so we don't await the same task multiple times
         let stats = try await activityStats
+        let sleep = try await sleepStats
 
+        // HealthKit does not expose ambient light as a queryable quantity, so
+        // we pass .nan here; RiskModel.predict substitutes the training-set
+        // median (matching the Python SimpleImputer) and the UI surfaces the
+        // gap honestly rather than fabricating a value.
         return HealthSnapshot(
             age: try await age,
             biologicalSexIsMale: try await sex,
@@ -91,9 +96,9 @@ final class HealthStore: ObservableObject {
             activityRegularity: stats.regularity,
             lowActivityDayRatio: stats.lowDayRatio,
             peakIntensity: stats.peak,
-            avgSleepHours: try await sleep,
-            sleepRegularity: 0.7, // placeholder until per-night variance is wired
-            circadianLightExposure: 0,
+            avgSleepHours: sleep.meanHours,
+            sleepRegularity: sleep.regularity,
+            circadianLightExposure: .nan,
             restingHeartRate: try await rhr,
             hrvSDNN: try await hrv,
             vo2Max: try await vo2
@@ -135,8 +140,12 @@ final class HealthStore: ObservableObject {
         }
     }
 
-    private func avgSleepHours(days: Int) async -> Double {
-        guard let sleepType = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) else { return 0 }
+    private struct SleepStats { let meanHours: Double; let regularity: Double }
+
+    private func sleepStatistics(days: Int) async -> SleepStats {
+        guard let sleepType = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) else {
+            return .init(meanHours: .nan, regularity: .nan)
+        }
         let end = Date()
         let start = Calendar.current.date(byAdding: .day, value: -days, to: end)!
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end)
@@ -150,13 +159,27 @@ final class HealthStore: ObservableObject {
                     HKCategoryValueSleepAnalysis.asleepREM.rawValue,
                     HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue,
                 ]
-                var totalSeconds: TimeInterval = 0
+                // Bucket asleep samples per calendar night (keyed on the
+                // 6PM-cutoff date of the start time) so multi-segment nights
+                // collapse into one duration before we measure variance.
+                let calendar = Calendar.current
+                var perNight: [Date: TimeInterval] = [:]
                 for s in samples ?? [] {
                     guard let cat = s as? HKCategorySample,
                           asleepValues.contains(cat.value) else { continue }
-                    totalSeconds += cat.endDate.timeIntervalSince(cat.startDate)
+                    let anchor = calendar.date(byAdding: .hour, value: -18, to: cat.startDate) ?? cat.startDate
+                    let key = calendar.startOfDay(for: anchor)
+                    perNight[key, default: 0] += cat.endDate.timeIntervalSince(cat.startDate)
                 }
-                cont.resume(returning: (totalSeconds / 3600.0) / Double(days))
+                guard !perNight.isEmpty else {
+                    cont.resume(returning: .init(meanHours: .nan, regularity: .nan)); return
+                }
+                let hours = perNight.values.map { $0 / 3600.0 }
+                let mean = hours.reduce(0, +) / Double(hours.count)
+                let variance = hours.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(hours.count)
+                let std = sqrt(variance)
+                let regularity = 1.0 / (1.0 + std)
+                cont.resume(returning: .init(meanHours: mean, regularity: regularity))
             }
             healthStore.execute(q)
         }

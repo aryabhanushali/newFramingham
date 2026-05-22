@@ -1,0 +1,6 @@
+"""Pytest configuration — adds src/ to sys.path so tests can import directly."""
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "src"))

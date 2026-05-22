@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: pytest (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # CI installs a focused subset of requirements.txt — the bits the test
+      # suite actually exercises. coremltools / pyreadstat / jupyter are
+      # excluded because they're only needed for retraining + Core ML export,
+      # not for verifying the shipped artifacts and the Streamlit demo.
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            "pandas" "numpy" "scipy" "scikit-learn" "joblib" \
+            "streamlit" "plotly" "pytest"
+
+      - name: Run test suite
+        run: pytest tests/ -v --color=yes

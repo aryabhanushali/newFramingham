@@ -62,11 +62,16 @@ final class RiskModel {
     }
 
     func predict(snapshot: HealthSnapshot) throws -> RiskAssessment {
-        // 1. assemble feature vector in canonical order
+        // 1. assemble feature vector in canonical order; any features the
+        //    device cannot read (NaN / sentinel) are filled with the training
+        //    median, mirroring the Python SimpleImputer step.
         let raw = snapshot.featureVector(order: scaler.featureOrder)
+        let imputed = zip(raw, scaler.featureOrder).map { (v, name) -> Double in
+            v.isFinite ? v : (scaler.medians[name] ?? 0)
+        }
 
         // 2. standard-scale with mean/std from training
-        let scaled = zip(raw, zip(scaler.mean, scaler.scale)).map { (value, ms) -> Double in
+        let scaled = zip(imputed, zip(scaler.mean, scaler.scale)).map { (value, ms) -> Double in
             let (m, s) = ms
             return s == 0 ? 0 : (value - m) / s
         }
@@ -82,8 +87,17 @@ final class RiskModel {
         let provider = try MLDictionaryFeatureProvider(dictionary: ["features": MLFeatureValue(multiArray: array)])
         let out = try mlModel.prediction(from: provider)
 
-        guard let probDict = out.featureValue(for: "classProbability")?.dictionaryValue as? [Int: Double],
-              let pPos = probDict[1] else {
+        // Core ML returns [NSNumber: Double] for Int64-labelled classes.
+        // Try the friendlier cast first, then fall back to NSNumber lookup
+        // so this is robust across iOS versions.
+        let pPos: Double
+        if let typed = out.featureValue(for: "classProbability")?.dictionaryValue as? [Int64: Double],
+           let p = typed[1] {
+            pPos = p
+        } else if let raw = out.featureValue(for: "classProbability")?.dictionaryValue,
+                  let p = raw[NSNumber(value: 1)] as? Double {
+            pPos = p
+        } else {
             throw ModelError.predictionFailed
         }
 
@@ -103,10 +117,11 @@ private struct ScalerSpec: Decodable {
     let featureOrder: [String]
     let mean: [Double]
     let scale: [Double]
+    let medians: [String: Double]
 
     enum CodingKeys: String, CodingKey {
         case featureOrder = "feature_order"
-        case mean, scale
+        case mean, scale, medians
     }
 }
 

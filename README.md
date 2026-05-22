@@ -1,16 +1,27 @@
 # Adaptive Cardiovascular Health Intelligence
 
+[![CI](https://github.com/aryabhanushali/newframingham/actions/workflows/ci.yml/badge.svg)](https://github.com/aryabhanushali/newframingham/actions/workflows/ci.yml)
+
 **Predicting 10-year cardiovascular disease risk from passive Apple Watch-style
 signals — entirely on-device, with no blood draws or clinical visits.**
 
-A two-layer project:
+A three-layer project, all driven by the *same trained model*:
 
 1. **Python core** — ingests NHANES 2011-2012 accelerometer data, derives a
-   HealthKit-shaped feature set, trains a calibrated tree-ensemble against
-   Framingham-derived labels, and exports a Core ML model.
-2. **iOS app** (`ios/`) — SwiftUI + HealthKit + Core ML. Reads Apple Watch
-   metrics, runs the same model locally, and renders an Apple-Health-style
-   risk card with a contextual insight.
+   HealthKit-shaped feature set, and trains an isotonic-calibrated
+   GradientBoosting tree ensemble against Framingham-derived labels.
+   Training writes four artifacts in one pass (`cvd_risk_v1.joblib`,
+   `scaler.json`, `isotonic_calibration.json`, `CVDRiskModel.mlmodel`) so the
+   web and iOS deployments are guaranteed to give the same answer for the
+   same inputs.
+2. **Streamlit web demo** (`app.py`) — interactive risk calculator. Loads the
+   same calibrated pipeline, exposes a HealthKit-labelled input form, and
+   adds a local-sensitivity bar chart + what-if sweep so users can see what
+   actually moves their estimated risk. Deployable to Streamlit Cloud as a
+   live URL.
+3. **iOS app** (`ios/`) — SwiftUI + HealthKit + Core ML. Reads Apple Watch
+   metrics, runs the exported `.mlmodel` + isotonic LUT locally, and renders
+   an Apple-Health-style risk card with a contextual insight.
 
 ---
 
@@ -40,17 +51,26 @@ clinical estimate — without ever needing a needle.
 
 ## Results
 
-|                          | Value |
-|--------------------------|------:|
-| Participants (NHANES 2011-2012, ages 30-74) | 2,967 |
-| Tree-ensemble OOF AUC    | **0.92** |
-| Brier score, post-calibration | **0.11** |
-| Core ML model size       | 64 KB |
-| Inference (Apple A14 +)  | sub-millisecond |
+|                                              | Value |
+|----------------------------------------------|------:|
+| Participants (NHANES 2011-2012, ages 30-74)  | 2,967 |
+| Tree-ensemble AUC (5-fold OOF)               | **0.921** |
+| Brier — uncalibrated (5-fold OOF)            | 0.111 |
+| Brier — after isotonic calibration           | **0.108** |
+| High-risk prevalence (Framingham ≥ 10%)      | 41.0% |
+| Core ML model size                           | 62 KB |
+| Inference (on-device, A14+)                  | real-time (single forward pass over a 200-tree, depth-3 ensemble) |
 
 The calibration plot, ROC, and risk-score distributions are in
 `results/calibration.png`. Sample rendered Health-card screenshots:
 `results/health_card_low.png`, `health_card_mid.png`, `health_card_high.png`.
+
+**Methodology notes.** The 5-fold cross-validation puts the
+median-imputer *inside* the sklearn `Pipeline`, so test-fold values cannot
+leak into the imputed training rows. Isotonic regression is fit on the
+out-of-fold predictions, then the same fitted calibrator ships in both the
+Python joblib and as a piecewise-linear LUT (`isotonic_calibration.json`)
+applied on-device. AUC and Brier above are the OOF numbers, not in-sample.
 
 ---
 
@@ -90,21 +110,23 @@ pipeline all support it).
 ## Repository layout
 
 ```
+app.py                       ←  Streamlit web demo (loads the joblib below)
+
 src/
-  healthkit_schema.py     ←  feature catalogue, HK identifiers, units
-  features_hk.py          ←  NHANES → HK-shaped features
-  framingham.py           ←  D'Agostino 2008 risk score (labels)
-  load_data.py            ←  NHANES XPT loader
-  train_hk.py             ←  CalibratedClassifierCV training run
-  export_coreml.py        ←  Core ML tree ensemble + isotonic LUT
-  health_report.py        ←  Apple-Health-style PNG report generator
+  healthkit_schema.py        ←  feature catalogue, HK identifiers, units
+  features_hk.py             ←  NHANES → HK-shaped features
+  framingham.py              ←  D'Agostino 2008 risk score (labels)
+  load_data.py               ←  NHANES XPT loader
+  train_hk.py                ←  one-shot training: joblib + sidecars + diagnostics
+  export_coreml.py           ←  consumes the joblib; writes CVDRiskModel.mlmodel
+  health_report.py           ←  Apple-Health-style PNG report generator
 
 models/
-  CVDRiskModel.mlmodel        ←  on-device tree ensemble (64 KB)
-  isotonic_calibration.json   ←  Swift-applied probability calibration
-  scaler.json                 ←  feature order + StandardScaler params
-  cvd_risk_v1.joblib          ←  Python reference pipeline
-  training_metadata.json      ←  AUC/Brier/cohort info
+  CVDRiskModel.mlmodel       ←  on-device tree ensemble (62 KB)
+  isotonic_calibration.json  ←  Swift-applied probability calibration (101-pt LUT)
+  scaler.json                ←  feature order, StandardScaler params, medians
+  cvd_risk_v1.joblib         ←  Python bundle (pipeline + isotonic calibrator)
+  training_metadata.json     ←  AUC, Brier, hyper-parameters, cohort info
 
 ios/
   README.md                ←  how to open in Xcode
@@ -136,13 +158,46 @@ pip install -r requirements.txt
 #    SMQ_G, GLU_G, GHB_G, DIQ_G, PAXHD_G, PAXDAY_G, PAXHR_G)
 #    https://wwwn.cdc.gov/nchs/nhanes/continuousnhanes/default.aspx?BeginYear=2011
 
-# 3. train + export everything
-python src/train_hk.py        # calibrated pipeline + diagnostics PNG
-python src/export_coreml.py   # CVDRiskModel.mlmodel + scaler + isotonic LUT
-python src/health_report.py   # sample Apple-Health-style PNGs into results/
+# 3. one-shot training run — writes joblib, scaler.json,
+#    isotonic_calibration.json, training_metadata.json, and the
+#    calibration diagnostics PNG.
+python src/train_hk.py
+
+# 4. export the same trained tree-ensemble as a Core ML model.
+#    No retraining — this script only consumes the joblib above.
+python src/export_coreml.py
+
+# 5. (optional) render sample Apple-Health-style report cards
+python src/health_report.py
+
+# 6. run the interactive web demo locally
+streamlit run app.py
+
+# 7. run the test suite (no NHANES data required for these)
+pytest tests/ -v
 ```
 
+To deploy the web demo: push to GitHub, then point
+[Streamlit Community Cloud](https://share.streamlit.io) at the repo with
+`app.py` as the main file.
+
 To open the iOS app, see `ios/README.md`.
+
+## Tests + CI
+
+`tests/` contains 17 unit/integration tests covering:
+
+- D'Agostino 2008 Framingham math against the paper's worked examples (male
+  55y → ~10%, female 55y → ~5-6%), age-monotonicity, and the smoking/diabetes
+  covariate signs.
+- Model-bundle integrity: joblib structure, scaler-vs-pipeline coherence,
+  isotonic LUT monotonicity and range, and a regression guard against
+  accidentally dropping the median imputer (the CV-leakage fix).
+- Streamlit smoke test via `streamlit.testing.v1.AppTest` — if this passes,
+  the app deploys cleanly on Streamlit Cloud.
+
+CI runs the same suite on every push and PR against `main`, on Python 3.11
+and 3.12 (`.github/workflows/ci.yml`).
 
 ---
 
@@ -151,12 +206,21 @@ To open the iOS app, see `ios/README.md`.
 - **NHANES is a US-only cross-sectional sample.** The Framingham coefficients
   are themselves derived from a non-representative cohort. Use this for
   population-scale triage and self-tracking, not individual clinical decisions.
-- **The "risk" output is a calibrated probability of *being labeled high-risk
+- **The "risk" output is a calibrated probability of *being labelled high-risk
   by Framingham*** — it is one degree removed from "ground truth" CVD events.
   A more rigorous v2 would train against actual NHANES-linked mortality.
+- **Smoking covariate uses NHANES SMQ020 ("ever smoked ≥100 cigarettes"), not
+  current smoker.** D'Agostino 2008's smoking term is current smoker; the
+  effect here is to nudge former-smoker risk scores up. v2 will combine
+  SMQ020 with SMQ040 for a current-smoker definition.
 - **Step / kcal calibration constants** were back-fit so that population
   medians match CDC adult norms; individual-level conversions from raw
   accelerometer counts are inherently noisy.
+- **Ambient light is in the trained feature vector but is not exposed by
+  HealthKit.** The iOS app passes `.nan` for `circadianLightExposure` and the
+  inference layer substitutes the training-set median (mirroring the Python
+  `SimpleImputer`). That fallback is acknowledged in code so the model's
+  expectations stay aligned across deployments.
 - **Heart-rate signals are read on-device but not in the v1 training set**
   because NHANES 2011-2012 doesn't include them. The schema and Swift code
   are wired so v2 can train on them without UI changes.

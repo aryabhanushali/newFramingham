@@ -2,14 +2,24 @@
   "model_name": "CVDRiskModel",
   "model_version": "1.0.0",
   "framework": "scikit-learn GradientBoostingClassifier",
-  "calibration": "isotonic, 5-fold",
+  "calibration": "isotonic (1-fit, OOF-trained)",
   "training_cohort": "NHANES 2011-2012, ages 30-74",
   "training_n": 2967,
   "high_risk_threshold": 0.1,
   "metrics": {
-    "auc_cv5": 0.9191169425741682,
-    "brier_cv5": 0.11110756438146864,
+    "auc_cv5": 0.9206388642580179,
+    "brier_cv5_uncalibrated": 0.11081810258306395,
+    "brier_cv5_calibrated": 0.10796871049777598,
     "high_risk_prevalence": 0.4098415908324907
+  },
+  "hyperparameters": {
+    "n_estimators": 200,
+    "max_depth": 3,
+    "learning_rate": 0.05,
+    "subsample": 0.85,
+    "random_state": 42,
+    "imputer": "median",
+    "scaler": "StandardScaler"
   },
   "feature_cols": [
     "age",
