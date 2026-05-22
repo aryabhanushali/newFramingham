@@ -1,11 +1,11 @@
-# Pin the app to a light editorial palette so visitors on dark-mode browsers
-# don't get white labels on a warm-paper background.
+# Pin the theme so visitors see the Apple-Health-style dark surface regardless
+# of their browser preference.
 [theme]
-base = "light"
-primaryColor = "#B3261E"           # editorial crimson — risk accent
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#FBF9F3"   # sidebar paper
-textColor = "#15161A"              # near-black ink for body / slider labels
+base = "dark"
+primaryColor = "#FF3B30"                # iOS system red
+backgroundColor = "#000000"             # Health app surface
+secondaryBackgroundColor = "#1C1C1E"    # card / sidebar background
+textColor = "#FFFFFF"
 font = "sans serif"
 
 [browser]
