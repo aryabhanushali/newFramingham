@@ -1,7 +1,7 @@
 # Adaptive Cardiovascular Health Intelligence
 
-[![CI](https://github.com/aryabhanushali/newframingham/actions/workflows/ci.yml/badge.svg)](https://github.com/aryabhanushali/newframingham/actions/workflows/ci.yml)
 
+🔗 Live Demo: https://newframingham-zsc93c9i4xgh4kydr3j3rm.streamlit.app/   
 **Predicting 10-year cardiovascular disease risk from passive Apple Watch-style
 signals — entirely on-device, with no blood draws or clinical visits.**
 
