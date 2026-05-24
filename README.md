@@ -1,7 +1,7 @@
 # Adaptive Cardiovascular Health Intelligence
 
 
-🔗 Live Demo: https://newframingham-zsc93c9i4xgh4kydr3j3rm.streamlit.app/   
+🔗 Live Demo: https://newframingham-zsc93c9i4xgh4kydr3j3rm.streamlit.app/
 **Predicting 10-year cardiovascular disease risk from passive Apple Watch-style
 signals — entirely on-device, with no blood draws or clinical visits.**
 
@@ -43,13 +43,12 @@ NHANES wearable signals  →  HealthKit-shaped features  →  CalibratedClassifi
                                                             (clinical labels)
 ```
 
-The model is trained to *predict the Framingham score* from passive inputs,
-so the iOS app outputs a number that is directly comparable to the gold-standard
-clinical estimate — without ever needing a needle.
+Because all four artifacts come from one fit, the Streamlit app and the iOS
+app are guaranteed to give the same answer for the same inputs.
 
 ---
 
-## Results
+# Results
 
 |                                              | Value |
 |----------------------------------------------|------:|
@@ -113,75 +112,59 @@ pipeline all support it).
 app.py                       ←  Streamlit web demo (loads the joblib below)
 
 src/
-  healthkit_schema.py        ←  feature catalogue, HK identifiers, units
-  features_hk.py             ←  NHANES → HK-shaped features
-  framingham.py              ←  D'Agostino 2008 risk score (labels)
-  load_data.py               ←  NHANES XPT loader
-  train_hk.py                ←  one-shot training: joblib + sidecars + diagnostics
-  export_coreml.py           ←  consumes the joblib; writes CVDRiskModel.mlmodel
-  health_report.py           ←  Apple-Health-style PNG report generator
+  healthkit_schema.py          # feature catalogue, HK identifiers, units
+  features_hk.py               # NHANES → HK-shaped features
+  framingham.py                # D'Agostino 2008 risk score (labels)
+  load_data.py                 # NHANES XPT loader
+  train_hk.py                  # one-shot training: joblib + sidecars
+  export_coreml.py             # consumes joblib → CVDRiskModel.mlmodel
+  health_report.py             # sample Apple-Health-style PNG renderer
 
 models/
-  CVDRiskModel.mlmodel       ←  on-device tree ensemble (62 KB)
-  isotonic_calibration.json  ←  Swift-applied probability calibration (101-pt LUT)
-  scaler.json                ←  feature order, StandardScaler params, medians
-  cvd_risk_v1.joblib         ←  Python bundle (pipeline + isotonic calibrator)
-  training_metadata.json     ←  AUC, Brier, hyper-parameters, cohort info
+  CVDRiskModel.mlmodel         # on-device tree ensemble (62 KB)
+  isotonic_calibration.json    # 101-point piecewise-linear LUT
+  scaler.json                  # feature order, scaler params, medians
+  cvd_risk_v1.joblib           # full Python bundle
+  training_metadata.json       # AUC, Brier, cohort info
 
-ios/
-  README.md                ←  how to open in Xcode
-  CVDIntelligence/
-    CVDIntelligenceApp.swift
-    HealthKit/HealthStore.swift     ←  HKQuery, statistics, sleep, characteristics
-    Models/HealthSnapshot.swift     ←  feature vector mirror of Python schema
-    Models/RiskModel.swift          ←  Core ML inference + isotonic LUT
-    Models/Insight.swift            ←  on-device rules engine
-    Views/DashboardView.swift       ←  Apple-Health-style screen
-    Views/RiskRingView.swift        ←  activity-ring risk indicator
-    Views/MetricCard.swift          ←  glanceable metric tile
-    Views/InsightCard.swift         ←  contextual recommendation
-    Resources/                      ←  CVDRiskModel.mlmodel + JSON sidecars
-    Info.plist                      ←  NSHealthShareUsageDescription
-    CVDIntelligence.entitlements    ←  HealthKit capability
+ios/CVDIntelligence/
+  HealthKit/HealthStore.swift  # HKQuery, statistics, sleep samples
+  Models/RiskModel.swift       # Core ML inference + isotonic LUT
+  Views/                       # SwiftUI dashboard, ring, cards
+  Resources/                   # bundled .mlmodel + JSON sidecars
+
+tests/                         # 17 pytest tests (Framingham math,
+                               # bundle integrity, Streamlit smoke test)
+
+.github/workflows/ci.yml       # pytest on every push/PR (Python 3.11, 3.12)
 ```
 
 ---
 
-## Reproduce
+# Running Locally
 
 ```bash
 # 1. install deps
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
-# 2. download NHANES files into data/  (DEMO_G, TCHOL_G, HDL_G, BPX_G,
-#    SMQ_G, GLU_G, GHB_G, DIQ_G, PAXHD_G, PAXDAY_G, PAXHR_G)
+# 2. download NHANES 2011-2012 files into data/
+#    (DEMO_G, TCHOL_G, HDL_G, BPX_G, SMQ_G, GLU_G, GHB_G, DIQ_G,
+#     PAXHD_G, PAXDAY_G, PAXHR_G)
 #    https://wwwn.cdc.gov/nchs/nhanes/continuousnhanes/default.aspx?BeginYear=2011
 
-# 3. one-shot training run — writes joblib, scaler.json,
-#    isotonic_calibration.json, training_metadata.json, and the
-#    calibration diagnostics PNG.
-python src/train_hk.py
+# 3. train + export everything in one pass
+python src/train_hk.py        # writes joblib + scaler + isotonic + metadata
+python src/export_coreml.py   # consumes joblib → CVDRiskModel.mlmodel
 
-# 4. export the same trained tree-ensemble as a Core ML model.
-#    No retraining — this script only consumes the joblib above.
-python src/export_coreml.py
-
-# 5. (optional) render sample Apple-Health-style report cards
-python src/health_report.py
-
-# 6. run the interactive web demo locally
+# 4. launch the web demo
 streamlit run app.py
 
-# 7. run the test suite (no NHANES data required for these)
+# 5. run the test suite
 pytest tests/ -v
 ```
 
-To deploy the web demo: push to GitHub, then point
-[Streamlit Community Cloud](https://share.streamlit.io) at the repo with
-`app.py` as the main file.
-
-To open the iOS app, see `ios/README.md`.
+To open the iOS app in Xcode, see `ios/README.md`.
 
 ## Tests + CI
 
@@ -229,6 +212,8 @@ and 3.12 (`.github/workflows/ci.yml`).
 
 ## Acknowledgments
 
-- NHANES 2011-2012 (CDC) — open-access wearable + clinical data.
-- D'Agostino, R.B. et al. 2008. "General Cardiovascular Risk Profile for Use in
-  Primary Care." *Circulation*, 117 (6).
+- NHANES 2011-2012 (U.S. CDC) — open-access wearable + clinical dataset
+- D'Agostino R.B. et al., 2008. "General Cardiovascular Risk Profile for Use
+  in Primary Care." *Circulation* 117(6) — the labels this model is trained
+  against
+- Apple HealthKit and Core ML documentation
